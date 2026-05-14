@@ -4,14 +4,12 @@ namespace ASC.Model.Models
 {
     public class ServiceRequest : BaseEntity, IAuditTracker
     {
-        public ServiceRequest()
-        {
-        }
+        public ServiceRequest() { }
 
         public ServiceRequest(string email)
         {
-            RowKey = Guid.NewGuid().ToString();
-            PartitionKey = email;
+            this.RowKey = Guid.NewGuid().ToString();
+            this.PartitionKey = email;
         }
 
         public string VehicleName { get; set; }

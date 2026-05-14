@@ -1,129 +1,296 @@
-﻿using ASC.Business.Interfaces;
+﻿using ASC.Buisiness.Interfaces;
+using ASC.Business.Interfaces;
 using ASC.Model.Models;
 using ASC.Utilities;
 using ASC.Web.Areas.ServiceRequests.Models;
 using ASC.Web.Controllers;
+using ASC.Web.ServiceHub;
 using ASC.Web.Services;
+
 using AutoMapper;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 
 namespace ASC.Web.Areas.ServiceRequests.Controllers
 {
     [Area("ServiceRequests")]
-    [Authorize(Roles = "User")]
+    [Authorize]
     public class ServiceRequestController : BaseController
     {
         private readonly IServiceRequestOperations _serviceRequestOperations;
+
         private readonly IMapper _mapper;
-        private readonly IMasterDataCacheOperations _masterDataCacheOperations;
-        private readonly IMasterDataOperations _masterDataOperations;
+
+        private readonly
+            IMasterDataCacheOperations
+            _masterDataCacheOperations;
+
+        private readonly
+            IMasterDataOperations
+            _masterDataOperations;
+
+        //
+        // SIGNALR
+        //
+        private readonly
+            IHubContext<ServiceMessagesHub>
+            _hubContext;
+
+        private readonly
+            IServiceRequestMessageOperations
+            _serviceRequestMessageOperations;
 
         public ServiceRequestController(
             IServiceRequestOperations serviceRequestOperations,
+
             IMapper mapper,
-            IMasterDataCacheOperations masterDataCacheOperations,
-            IMasterDataOperations masterDataOperations)
+
+            IMasterDataCacheOperations
+                masterDataCacheOperations,
+
+            IMasterDataOperations
+                masterDataOperations,
+
+            IHubContext<ServiceMessagesHub>
+                hubContext,
+
+            IServiceRequestMessageOperations
+                serviceRequestMessageOperations)
         {
-            _serviceRequestOperations = serviceRequestOperations;
+            _serviceRequestOperations =
+                serviceRequestOperations;
+
             _mapper = mapper;
-            _masterDataCacheOperations = masterDataCacheOperations;
-            _masterDataOperations = masterDataOperations;
+
+            _masterDataCacheOperations =
+                masterDataCacheOperations;
+
+            _masterDataOperations =
+                masterDataOperations;
+
+            //
+            // SIGNALR
+            //
+            _hubContext = hubContext;
+
+            _serviceRequestMessageOperations =
+                serviceRequestMessageOperations;
         }
 
         [HttpGet]
-        public async Task<IActionResult> ServiceRequest()
+        public async Task<IActionResult>
+            ServiceRequest()
         {
             await LoadMasterDataToViewBag();
 
-            return View(new NewServiceRequestViewModel());
+            return View(
+                new NewServiceRequestViewModel());
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ServiceRequest(NewServiceRequestViewModel request)
+        public async Task<IActionResult>
+            ServiceRequest(
+                NewServiceRequestViewModel request)
         {
             if (!ModelState.IsValid)
             {
                 await LoadMasterDataToViewBag();
+
                 return View(request);
             }
 
-            var currentUser = HttpContext.User.GetCurrentUserDetails();
+            var currentUser =
+                HttpContext.User
+                    .GetCurrentUserDetails();
 
-            var serviceRequest = _mapper.Map<ServiceRequest>(request);
+            var serviceRequest =
+                _mapper.Map<ServiceRequest>(request);
 
-            serviceRequest.PartitionKey = currentUser.Email;
-            serviceRequest.RowKey = Guid.NewGuid().ToString();
+            serviceRequest.PartitionKey =
+                currentUser.Email;
+
+            serviceRequest.RowKey =
+                Guid.NewGuid().ToString();
+
             serviceRequest.Status = "New";
-            serviceRequest.CreatedBy = currentUser.Email;
-            serviceRequest.UpdatedBy = currentUser.Email;
-            serviceRequest.CreatedDate = DateTime.UtcNow;
-            serviceRequest.UpdatedDate = DateTime.UtcNow;
 
-            await _serviceRequestOperations.CreateServiceRequestAsync(serviceRequest);
+            serviceRequest.CreatedBy =
+                currentUser.Email;
 
-            return RedirectToAction("Dashboard", "Dashboard", new { area = "ServiceRequests" });
+            serviceRequest.UpdatedBy =
+                currentUser.Email;
+
+            serviceRequest.CreatedDate =
+                DateTime.UtcNow;
+
+            serviceRequest.UpdatedDate =
+                DateTime.UtcNow;
+
+            await _serviceRequestOperations
+                .CreateServiceRequestAsync(
+                    serviceRequest);
+
+            return RedirectToAction(
+                "Dashboard",
+                "Dashboard",
+                new
+                {
+                    area = "ServiceRequests"
+                });
         }
 
-        private async Task LoadMasterDataToViewBag()
+        //
+        // GET ALL MESSAGES
+        //
+        [HttpGet]
+        public async Task<IActionResult>
+            ServiceRequestMessages(
+                string serviceRequestId)
         {
-            var vehicleTypes = new List<MasterDataValue>();
-            var vehicleNames = new List<MasterDataValue>();
+            var messages =
+                await _serviceRequestMessageOperations
+                    .GetServiceRequestMessageAsync(
+                        serviceRequestId);
+
+            return Json(messages);
+        }
+
+        //
+        // CREATE MESSAGE
+        //
+        [HttpPost]
+        public async Task<IActionResult>
+            CreateServiceRequestMessage(
+                ServiceRequestMessage message)
+        {
+            if (string.IsNullOrWhiteSpace(
+                    message.Message))
+            {
+                return Json(false);
+            }
+
+            var currentUser =
+                HttpContext.User
+                    .GetCurrentUserDetails();
+
+            message.FromEmail =
+                currentUser.Email;
+
+            message.FromDisplayName =
+                currentUser.Name;
+
+            message.MessageDate =
+                DateTime.UtcNow;
+
+            message.RowKey =
+                Guid.NewGuid().ToString();
+
+            await _serviceRequestMessageOperations
+                .CreateServiceRequestMessageAsync(
+                    message);
+
+            //
+            // BROADCAST REALTIME MESSAGE
+            //
+            await _hubContext.Clients
+                .All
+                .SendAsync(
+                    "publishMessage",
+                    message);
+
+            return Json(true);
+        }
+
+        private async Task
+            LoadMasterDataToViewBag()
+        {
+            var vehicleTypes =
+                new List<MasterDataValue>();
+
+            var vehicleNames =
+                new List<MasterDataValue>();
 
             try
             {
-                // Try cache first
-                var masterData = await _masterDataCacheOperations.GetMasterDataCacheAsync();
+                var masterData =
+                    await _masterDataCacheOperations
+                        .GetMasterDataCacheAsync();
 
-                if (masterData != null && masterData.MasterDataValues != null && masterData.MasterDataValues.Any())
+                if (masterData != null &&
+                    masterData.MasterDataValues != null &&
+                    masterData.MasterDataValues.Any())
                 {
-                    vehicleTypes = masterData.MasterDataValues
-                        .Where(p => p.PartitionKey == "VehicleType" && p.IsActive)
-                        .ToList();
+                    vehicleTypes =
+                        masterData.MasterDataValues
+                            .Where(p =>
+                                p.PartitionKey ==
+                                "VehicleType" &&
+                                p.IsActive)
+                            .ToList();
 
-                    vehicleNames = masterData.MasterDataValues
-                        .Where(p => p.PartitionKey == "VehicleName" && p.IsActive)
-                        .ToList();
+                    vehicleNames =
+                        masterData.MasterDataValues
+                            .Where(p =>
+                                p.PartitionKey ==
+                                "VehicleName" &&
+                                p.IsActive)
+                            .ToList();
                 }
             }
             catch
             {
-                // Cache (Redis) unavailable, ignore
+
             }
 
-            // Fallback: load directly from DB if cache returned nothing
-            if (!vehicleTypes.Any() || !vehicleNames.Any())
+            if (!vehicleTypes.Any() ||
+                !vehicleNames.Any())
             {
                 try
                 {
-                    var allValues = await _masterDataOperations.GetAllMasterValuesAsync();
+                    var allValues =
+                        await _masterDataOperations
+                            .GetAllMasterValuesAsync();
 
                     if (allValues != null)
                     {
                         if (!vehicleTypes.Any())
                         {
-                            vehicleTypes = allValues
-                                .Where(p => p.PartitionKey == "VehicleType" && p.IsActive)
-                                .ToList();
+                            vehicleTypes =
+                                allValues
+                                    .Where(p =>
+                                        p.PartitionKey ==
+                                        "VehicleType" &&
+                                        p.IsActive)
+                                    .ToList();
                         }
 
                         if (!vehicleNames.Any())
                         {
-                            vehicleNames = allValues
-                                .Where(p => p.PartitionKey == "VehicleName" && p.IsActive)
-                                .ToList();
+                            vehicleNames =
+                                allValues
+                                    .Where(p =>
+                                        p.PartitionKey ==
+                                        "VehicleName" &&
+                                        p.IsActive)
+                                    .ToList();
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error loading master data from DB: {ex.Message}");
+                    Console.WriteLine(
+                        $"Error loading master data from DB: {ex.Message}");
                 }
             }
 
-            ViewBag.VehicleTypes = vehicleTypes;
-            ViewBag.VehicleNames = vehicleNames;
+            ViewBag.VehicleTypes =
+                vehicleTypes;
+
+            ViewBag.VehicleNames =
+                vehicleNames;
         }
     }
 }

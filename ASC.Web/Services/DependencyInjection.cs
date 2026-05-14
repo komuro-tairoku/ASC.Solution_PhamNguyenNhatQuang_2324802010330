@@ -78,6 +78,13 @@ namespace ASC.Web.Services
             services.AddAutoMapper(typeof(ApplicationDbContext));
             //
 
+            services.AddStackExchangeRedisCache(options =>
+            {
+                options.Configuration = config.GetSection("CacheSettings:RedisConnectionString").Value;
+                options.InstanceName = config.GetSection("CacheSettings:CacheInstance").Value;
+            }
+            );
+
             return services;
 
         }

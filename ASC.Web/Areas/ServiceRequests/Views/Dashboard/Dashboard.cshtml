@@ -5,6 +5,23 @@
 }
 
 <div class="row"></div>
+
+<!-- Dashboard Header with Create Button -->
+<div class="row padding-top-20px padding-left-20px padding-right-20px">
+    <div class="col s12">
+        <div class="row valign-wrapper">
+            <div class="col s6">
+                <h3 class="teal-text">Service Requests</h3>
+            </div>
+            <div class="col s6 right-align">
+                <a href="/ServiceRequests/ServiceRequest/ServiceRequest" class="btn-large waves-effect waves-light teal lighten-1">
+                    <i class="material-icons left">add</i>Create New Request
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
 @await Html.PartialAsync("_ServiceRequestGrid", Model.ServiceRequests,
     new ViewDataDictionary(ViewData)
     {
@@ -19,15 +36,39 @@
         $(document).ready(function () {
             // Initialize DataTable to show list of Service Requests
             var table = $('#tblServiceRequests').DataTable({
-                'pageLength': 3,
-                // Number of records to be displayed per page
-                'lengthMenu': [[3, 5, 10, -1], [3, 5, 10, 'All']],
-                // Remove default Sorting
+                'pageLength': 5,
+                'lengthMenu': [[5, 10, 15, -1], [5, 10, 15, 'All']],
                 'sorting': [],
-                'columns': [{ "visible": false }, { "visible": false }, null, { "width":"20%" }, null, null, null]});
-            // Set Styles for DataTable and Number of Records to be displayed dropdown
+                'columns': [
+                    { "visible": false },
+                    { "visible": false },
+                    null,
+                    { "width":"15%" },
+                    { "width":"15%" },
+                    { "width":"15%" },
+                    null
+                ],
+                'dom': '<"top"lf>rt<"bottom"ip>',
+                'language': {
+                    'lengthMenu': 'Show _MENU_ entries per page',
+                    'info': 'Showing _START_ to _END_ of _TOTAL_ entries',
+                    'paginate': {
+                        'previous': 'Previous',
+                        'next': 'Next'
+                    }
+                }
+            });
             $('.tblServiceRequests').css("width", "100%");
             $('select[name$="ServiceRequests_length"]').material_select();
+
+            // Handle View button click
+            $('#tblServiceRequests tbody').on('click', '.view', function() {
+                var row = table.row($(this).parents('tr'));
+                var rowId = row.data()[0]; // Get RowKey from first column
+                if (rowId) {
+                    window.location.href = '/ServiceRequests/ServiceRequest/ServiceRequestDetails/' + rowId;
+                }
+            });
         });
     </script>
 }

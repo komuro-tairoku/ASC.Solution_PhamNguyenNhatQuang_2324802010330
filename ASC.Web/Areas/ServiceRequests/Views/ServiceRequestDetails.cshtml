@@ -1,0 +1,193 @@
+﻿<div class="row"></div>
+
+<!-- Chat Section -->
+<div class="row padding-top-20px padding-left-20px padding-right-20px">
+    <div class="col s12">
+        <div class="z-depth-2" style="background-color: white; border-radius: 2px; overflow: hidden;">
+            <!-- Chat Header -->
+            <div style="background-color: #b0bec5; padding: 15px 20px; border-bottom: 2px solid #90a4ae;">
+                <h4 style="margin: 0; color: white; font-weight: 600; font-size: 24px;">
+                    <i class="material-icons" style="vertical-align: middle; margin-right: 10px;">chat</i>
+                    Real-time Messages
+                </h4>
+            </div>
+
+            <!-- Messages Container -->
+            <div id="messagesContainer" class="messages" style="
+                height: 400px;
+                overflow-y: auto;
+                padding: 20px;
+                background-color: #fafafa;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;">
+                <ul id="messagesList" style="list-style: none; padding: 0; margin: 0; width: 100%;"></ul>
+            </div>
+
+            <!-- Input Area -->
+            <div style="background-color: white; padding: 20px; border-top: 1px solid #e0e0e0;">
+                <div class="row" style="margin-bottom: 0;">
+                    <input type="hidden" id="serviceRequestId" value="@Model.RowKey" />
+
+                    <div class="col s9" style="padding-right: 10px;">
+                        <input type="text"
+                               id="txtMessage"
+                               class="form-control"
+                               placeholder="Type your message..."
+                               style="width: 100%; padding: 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-family: Arial, sans-serif;" />
+                    </div>
+
+                    <div class="col s3" style="padding-left: 0;">
+                        <button id="btnSend" class="btn btn-large waves-effect waves-light teal lighten-1" style="width: 100%; margin: 0;">
+                            <i class="material-icons left">send</i>Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+
+    <script>
+        //
+        // SIGNALR CONNECTION
+        //
+        const connection =
+            new signalR.HubConnectionBuilder()
+                .withUrl("/serviceMessagesHub")
+                .build();
+
+        //
+        // RECEIVE MESSAGE
+        //
+        connection.on(
+            "publishMessage",
+            function(message)
+            {
+                if (message.partitionKey !=
+                    $("#serviceRequestId").val())
+                {
+                    return;
+                }
+
+                appendMessageToUI(message);
+                scrollToBottom();
+            });
+
+        //
+        // START SIGNALR
+        //
+        connection.start()
+            .then(function ()
+            {
+                console.log("SignalR Connected");
+            })
+            .catch(function (err)
+            {
+                return console.error(err.toString());
+            });
+
+        //
+        // SEND MESSAGE
+        //
+        $("#btnSend").click(function ()
+        {
+            const messageText = $("#txtMessage").val();
+            if (!messageText.trim()) {
+                return;
+            }
+
+            const message =
+            {
+                Message: messageText,
+                PartitionKey: $("#serviceRequestId").val()
+            };
+
+            $.post(
+                "/ServiceRequests/ServiceRequest/CreateServiceRequestMessage",
+                message,
+                function(response)
+                {
+                    $("#txtMessage").val("");
+                    $("#txtMessage").focus();
+                });
+        });
+
+        //
+        // ALLOW SEND ON ENTER KEY
+        //
+        $("#txtMessage").keypress(function(e) {
+            if (e.which == 13) { // Enter key
+                $("#btnSend").click();
+                return false;
+            }
+        });
+
+        //
+        // LOAD OLD MESSAGES
+        //
+        $(document).ready(function ()
+        {
+            $.get(
+                "/ServiceRequests/ServiceRequest/ServiceRequestMessages",
+                {
+                    serviceRequestId:
+                        $("#serviceRequestId").val()
+                },
+                function(messages)
+                {
+                    $.each(messages,
+                        function(index, message)
+                        {
+                            appendMessageToUI(message);
+                        });
+
+                    scrollToBottom();
+                    $("#txtMessage").focus();
+                });
+        });
+
+        function appendMessageToUI(message) {
+            const messageHTML = `
+                <li style="list-style: none; margin-bottom: 12px; padding: 12px; background-color: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 12px;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: #26a69a; font-size: 14px; margin-bottom: 4px;">
+                            ${message.fromDisplayName}
+                        </div>
+                        <div style="color: #333; font-size: 15px; line-height: 1.4;">
+                            ${escapeHtml(message.message)}
+                        </div>
+                        <div style="color: #999; font-size: 12px; margin-top: 6px;">
+                            ${formatTime(message.timestamp)}
+                        </div>
+                    </div>
+                </li>
+            `;
+            $("#messagesList").append(messageHTML);
+        }
+
+        function scrollToBottom()
+        {
+            var container = $("#messagesContainer");
+            container.scrollTop(container[0].scrollHeight);
+        }
+
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatTime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'});
+        }
+
+    </script>
+
+}
